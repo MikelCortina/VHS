@@ -46,7 +46,10 @@ public class PistolViewModelImport : AssetPostprocessor
             // TsitskiExport hornea la pistola desde un frame antes que los brazos (frame 1 de la pistola = frame 0 de
             // los brazos), así que la pistola iba un frame retrasada y se separaba de la mano en los movimientos
             // rápidos. Se recorta su primer frame para que los dos clips empiecen en el mismo instante.
-            if (c.takeName.Contains("Pistol Arms") && c.lastFrame - c.firstFrame > 1f) c.firstFrame += 1f;
+            // Toma del arma = "<Arma> Arms <X>" ("Pistol Arms Idle", "AK47 Arms Reload"); la de los brazos empieza por "Arms ".
+            string leaf = c.takeName.Substring(c.takeName.LastIndexOf('|') + 1);
+            bool weaponTake = leaf.Contains(" Arms ") && !leaf.StartsWith("Arms ");
+            if (weaponTake && c.lastFrame - c.firstFrame > 1f) c.firstFrame += 1f;
         }
         mi.clipAnimations = clips;
     }

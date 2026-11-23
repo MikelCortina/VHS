@@ -31,7 +31,7 @@ public class HitscanWeapon : MonoBehaviour
 
     [Header("Animación (brazos + arma)")]
     public FPSViewModelAnimator viewModel; // opcional: reproduce "Attack" al disparar
-    [Tooltip("Tecla para sacar y guardar el arma")]
+    [Tooltip("Tecla para sacar y guardar el arma (pistola 1, AK47 3)")]
     public Key equipKey = Key.Digit1;
 
     [Header("Munición")]
@@ -43,8 +43,13 @@ public class HitscanWeapon : MonoBehaviour
     public bool autoReload = true;
     [Tooltip("Dejar recargar aunque el cargador esté lleno")]
     public bool reloadWhenFull = true;
+    [Tooltip("Munición del inventario que gasta al recargar. Vacío = munición infinita")]
+    public ItemData ammoItem;
     /// <summary>Balas que quedan en el cargador.</summary>
     public int Ammo { get; private set; }
+    Inventory inventory;
+    WeaponSwitcher switcher;
+    bool UsesInventoryAmmo => ammoItem != null && inventory != null;
 
     [Header("Apuntar (clic derecho)")]
     public bool canAim = true;
@@ -73,15 +78,23 @@ public class HitscanWeapon : MonoBehaviour
         if (!audioSource && shootClip) { audioSource = gameObject.AddComponent<AudioSource>(); audioSource.playOnAwake = false; audioSource.spatialBlend = 0f; }
         if (muzzleLight) muzzleLight.enabled = false;
         Ammo = magazineSize;
+        inventory = GetComponentInParent<Inventory>();
+        switcher = GetComponentInParent<WeaponSwitcher>(true);
     }
 
     void OnEnable() { if (viewModel) viewModel.ReloadFinished += Refill; }
     void OnDisable() { if (viewModel) viewModel.ReloadFinished -= Refill; }
-    void Refill() => Ammo = magazineSize;
+
+    void Refill()
+    {
+        if (UsesInventoryAmmo) Ammo += inventory.Take(ammoItem, magazineSize - Ammo);   // solo lo que haya
+        else Ammo = magazineSize;
+    }
 
     void Reload()
     {
         if (Ammo >= magazineSize && !reloadWhenFull) return;   // cargador lleno: nada que hacer
+        if (UsesInventoryAmmo && inventory.Count(ammoItem) == 0) return;   // sin balas en el inventario
         if (viewModel && viewModel.IsReloading) return;
         // con animación: el cargador se rellena al terminarla (ReloadFinished); sin ella, al momento
         if (!viewModel || !viewModel.PlayReload()) Refill();
@@ -96,7 +109,8 @@ public class HitscanWeapon : MonoBehaviour
 
         // Sacar / guardar el arma
         var kb = Keyboard.current;
-        if (viewModel && kb != null && locked && kb[equipKey].wasPressedThisFrame) viewModel.ToggleEquip();
+        // (con varias armas lo hace WeaponSwitcher, que mira el equipKey de cada una)
+        if (viewModel && !switcher && kb != null && locked && kb[equipKey].wasPressedThisFrame) viewModel.ToggleEquip();
         bool inHand = !viewModel || viewModel.CanUseWeapon;   // guardada, a medio sacar o recargando: ni dispara ni apunta
 
         // Recargar

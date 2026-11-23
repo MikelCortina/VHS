@@ -19,25 +19,89 @@ using UnityEngine.Rendering;
 /// </summary>
 public static class PistolViewModelSetup
 {
-    const string Dir = "Assets/Weapons/Pistol/";
+    const string Dir = "Assets/Weapons/Pistol/";   // pistola, brazos (M_Brazos, arms_01) y fogonazo (FX) compartidos
+
+    /// <summary>Qué arma montar: sus FBX, materiales, objeto en la escena, tecla y sonido.</summary>
+    class WeaponDef
+    {
+        public string Label, Dir, GunFbx, ArmsFbx, MatPrefix, TexPattern, ObjectName, Sound;
+        public UnityEngine.InputSystem.Key Key;
+        public System.Action<HitscanWeapon> Defaults;   // valores iniciales al crear su HitscanWeapon
+    }
+
+    static readonly WeaponDef PistolDef = new WeaponDef
+    {
+        Label = "Pistola", Dir = Dir, GunFbx = "Pistol.fbx", ArmsFbx = "Arms Pistol.fbx",
+        MatPrefix = "Piezas/M_Pistola_", ObjectName = null,   // el HitscanWeapon que ya había en la escena
+        Sound = "Assets/Audio/Weapons/Disparo_Pistola_Crudo.wav", Key = UnityEngine.InputSystem.Key.Digit1,
+    };
+
+    static readonly WeaponDef AK47Def = new WeaponDef
+    {
+        Label = "AK47", Dir = "Assets/Weapons/AK47/", GunFbx = "AK47.fbx", ArmsFbx = "Arms AK47.fbx",
+        MatPrefix = "Piezas/M_AK47_", TexPattern = "Texturas/T_AK47_{0}.png", ObjectName = "Weapon_AK47",
+        Sound = "Assets/Audio/Weapons/Disparo_AK47_Crudo.wav", Key = UnityEngine.InputSystem.Key.Digit3,
+        Defaults = w =>
+        {
+            w.automatic = true;          // ráfaga manteniendo el clic
+            w.fireRate = 10f;            // ~600 disparos/min, como un AKM
+            w.damage = 30f;
+            w.range = 150f;
+            w.magazineSize = 30;
+            w.shootPitchVariation = 0.04f;
+            w.aimFovMultiplier = 0.75f;
+        },
+    };
+
+    static readonly WeaponDef[] AllDefs = { PistolDef, AK47Def };
 
     [MenuItem("PSX/Montar pistola animada")]
-    public static void Setup()
+    public static void Setup() => Setup(PistolDef);
+
+    [MenuItem("PSX/Montar AK47")]
+    public static void SetupAK47() => Setup(AK47Def);
+
+    /// <summary>El HitscanWeapon de esta arma en la escena abierta; el del AK47 se crea junto a la pistola si falta.</summary>
+    static HitscanWeapon FindWeapon(WeaponDef def)
     {
-        var weapon = Object.FindAnyObjectByType<HitscanWeapon>();
-        if (!weapon) { Debug.LogError("Montar pistola: no hay ningún HitscanWeapon en la escena abierta."); return; }
-        var cam = weapon.GetComponentInParent<Camera>();
-        if (!cam) { Debug.LogError("Montar pistola: el HitscanWeapon no está dentro de una cámara."); return; }
+        var all = Object.FindObjectsByType<HitscanWeapon>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        var named = AllDefs.Where(d => d.ObjectName != null).Select(d => d.ObjectName).ToList();
+        var pistol = all.FirstOrDefault(w => !named.Contains(w.name));
+        if (def.ObjectName == null) return pistol;
+        var w0 = all.FirstOrDefault(w => w.name == def.ObjectName);
+        if (w0) return w0;
+        if (!pistol) return null;
 
-        var armsModel = AssetDatabase.LoadAssetAtPath<GameObject>(Dir + "Arms Pistol.fbx");
-        var gunModel = AssetDatabase.LoadAssetAtPath<GameObject>(Dir + "Pistol.fbx");
-        if (!armsModel || !gunModel) { Debug.LogError("Montar pistola: faltan Arms Pistol.fbx o Pistol.fbx en " + Dir); return; }
+        var go = new GameObject(def.ObjectName);
+        Undo.RegisterCreatedObjectUndo(go, def.Label);
+        go.transform.SetParent(pistol.transform.parent, false);
+        var w1 = Undo.AddComponent<HitscanWeapon>(go);
+        EditorJsonUtility.FromJsonOverwrite(EditorJsonUtility.ToJson(pistol), w1);   // mismos ajustes (capas, munición…)
+        w1.viewModel = null; w1.muzzleParticles = null; w1.muzzleLight = null;
+        w1.audioSource = null; w1.shootClip = null;
+        def.Defaults?.Invoke(w1);
+        return w1;
+    }
 
-        var armsCtrl = BuildController(Dir + "Arms Pistol.controller", Dir + "Arms Pistol.fbx");
-        var gunCtrl = BuildController(Dir + "Pistol.controller", Dir + "Pistol.fbx");
+    static void Setup(WeaponDef def)
+    {
+        string Dir = def.Dir;   // (oculta la constante: FBX, controllers y materiales de esta arma)
+        string tag = "Montar " + def.Label;
+        var weapon = FindWeapon(def);
+        if (!weapon) { Debug.LogError(tag + ": no hay ningún HitscanWeapon en la escena abierta."); return; }
+        var cam = weapon.GetComponentInParent<Camera>(true);
+        if (!cam) { Debug.LogError(tag + ": el HitscanWeapon no está dentro de una cámara."); return; }
+
+        var armsModel = AssetDatabase.LoadAssetAtPath<GameObject>(Dir + def.ArmsFbx);
+        var gunModel = AssetDatabase.LoadAssetAtPath<GameObject>(Dir + def.GunFbx);
+        if (!armsModel || !gunModel) { Debug.LogError($"{tag}: faltan {def.ArmsFbx} o {def.GunFbx} en {Dir}"); return; }
+
+        string Ctrl(string fbx) => Dir + System.IO.Path.GetFileNameWithoutExtension(fbx) + ".controller";
+        var armsCtrl = BuildController(Ctrl(def.ArmsFbx), Dir + def.ArmsFbx);
+        var gunCtrl = BuildController(Ctrl(def.GunFbx), Dir + def.GunFbx);
         if (!armsCtrl || !gunCtrl) return;
 
-        Undo.SetCurrentGroupName("Montar pistola animada");
+        Undo.SetCurrentGroupName(tag);
         int group = Undo.GetCurrentGroup();
 
         // Rehacer si ya se había montado. El anterior se guarda hasta el final para pasar al nuevo
@@ -82,9 +146,11 @@ public static class PistolViewModelSetup
         Vector3 P(Transform t) => vm.transform.InverseTransformPoint(t.position);
         var camBone = Find(arms, "camera");
         var rootBone = Find(arms, "root");
-        var upR = Find(arms, "upper_arm.R");
-        var upL = Find(arms, "upper_arm.L");
-        if (!camBone || !rootBone || !upR || !upL) { Debug.LogError("Montar pistola: no encuentro los huesos camera/root/upper_arm.L/R en los brazos."); return; }
+        // Lado derecho = de un hombro a otro. Se usa el inicio de los huesos "shoulder", que no se mueve con la pose
+        // (los upper_arm sí: el FBX viene en la pose del Idle y, si en él giras los hombros, la cámara salía torcida)
+        var upR = Find(arms, "shoulder.R") ?? Find(arms, "upper_arm.R");
+        var upL = Find(arms, "shoulder.L") ?? Find(arms, "upper_arm.L");
+        if (!camBone || !rootBone || !upR || !upL) { Debug.LogError(tag + ": no encuentro los huesos camera/root/shoulder.L/R en los brazos."); return; }
         Vector3 pc = P(camBone);
         Vector3 up = (pc - P(rootBone)).normalized;
         Vector3 right = (P(upR) - P(upL)).normalized;
@@ -107,11 +173,15 @@ public static class PistolViewModelSetup
 
         // Materiales PSX: uno para los brazos y uno por cada pieza de la pistola
         // (Assets/Weapons/Pistol/Piezas/M_Pistola_<pieza>). La textura que les pongas se conserva al volver a montar.
-        var mArms = GetMat("M_Brazos", Color.white, AssetDatabase.LoadAssetAtPath<Texture2D>(Dir + "arms_01.png"));
+        // (los brazos comparten material con la pistola; cada arma tiene los suyos: M_Pistola_<pieza>, M_AK47_<pieza>,
+        // que al crearse cogen su textura de Texturas/ si la hay)
+        var mArms = GetMat(PistolViewModelSetup.Dir + "M_Brazos.mat", Color.white,
+                           AssetDatabase.LoadAssetAtPath<Texture2D>(PistolViewModelSetup.Dir + "arms_01.png"));
         foreach (var r in arms.GetComponentsInChildren<Renderer>(true))
             SetMats(r, _ => mArms);
         foreach (var r in gun.GetComponentsInChildren<Renderer>(true))
-            SetMats(r, name => string.IsNullOrEmpty(name) ? null : GetMat("Piezas/M_Pistola_" + name, PieceColor(name)));
+            SetMats(r, name => string.IsNullOrEmpty(name) ? null : GetMat(Dir + def.MatPrefix + name + ".mat", PieceColor(name), null,
+                def.TexPattern == null ? null : AssetDatabase.LoadAssetAtPath<Texture2D>(Dir + string.Format(def.TexPattern, name))));
 
         // Conectar el disparo
         var vmAnim = Undo.AddComponent<FPSViewModelAnimator>(vm);
@@ -125,7 +195,8 @@ public static class PistolViewModelSetup
 
         // Sonido del disparo (solo si no le has puesto otro)
         if (!weapon.shootClip)
-            weapon.shootClip = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Audio/Weapons/Disparo_Pistola_Crudo.wav");
+            weapon.shootClip = AssetDatabase.LoadAssetAtPath<AudioClip>(def.Sound);
+        weapon.equipKey = def.Key;
         if (!weapon.audioSource)
         {
             var src = weapon.GetComponent<AudioSource>();
@@ -146,18 +217,36 @@ public static class PistolViewModelSetup
         }
 
         // Vista previa en el editor: pose del Idle
-        var idleArms = Clip(Dir + "Arms Pistol.fbx", "Idle");
-        var idleGun = Clip(Dir + "Pistol.fbx", "Idle");
+        var idleArms = Clip(Dir + def.ArmsFbx, "Idle");
+        var idleGun = Clip(Dir + def.GunFbx, "Idle");
         if (idleArms) idleArms.SampleAnimation(arms, 0f);
         if (idleGun) idleGun.SampleAnimation(gun, 0f);
 
         // Fogonazo de partículas + luz en la boca del cañón (solo si no hay ya uno: así conserva tus ajustes)
         if (!weapon.muzzleParticles) CreateMuzzleFlash(weapon, gun, cam);
 
+        SetupSwitcher(cam);
+
         Undo.CollapseUndoOperations(group);
         EditorSceneManager.MarkSceneDirty(weapon.gameObject.scene);
         Selection.activeGameObject = vm;
-        Debug.Log("Pistola animada montada. Dale a Play y dispara con clic izquierdo. Guarda la escena (Ctrl+S) si te gusta.");
+        Debug.Log($"{def.Label} montada (tecla {def.Key}). Dale a Play, sácala con su número y dispara con clic izquierdo. " +
+                  "Guarda la escena (Ctrl+S) si te gusta.");
+    }
+
+    /// <summary>WeaponSwitcher en la cámara con todas las armas montadas: cada una se saca con su tecla (equipKey) y,
+    /// sin arma, se ven los puños de la pistola.</summary>
+    static void SetupSwitcher(Camera cam)
+    {
+        var weapons = cam.GetComponentsInChildren<HitscanWeapon>(true).Where(w => w.viewModel).OrderBy(w => w.equipKey).ToArray();
+        var sw = cam.GetComponent<WeaponSwitcher>();
+        if (!sw) sw = Undo.AddComponent<WeaponSwitcher>(cam.gameObject);
+        Undo.RecordObject(sw, "Cambio de armas");
+        sw.weapons = weapons;
+        sw.fistsWeapon = FindWeapon(PistolDef);
+        foreach (var w in weapons)
+            if (!w.gameObject.activeSelf) { Undo.RecordObject(w.gameObject, "Arma"); w.gameObject.SetActive(true); }   // las oculta el propio switcher al jugar
+        Debug.Log("Cambio de armas: " + string.Join(", ", weapons.Select(w => $"{w.name} = {w.equipKey}")));
     }
 
     /// <summary>
@@ -486,18 +575,19 @@ public static class PistolViewModelSetup
         return front.Aggregate(Vector3.zero, (a, b) => a + b) / front.Count;
     }
 
-    static Material GetMat(string name, Color color, Texture forcedTex = null)
+    // path = ruta completa del .mat. initialTex: textura que se le pone solo al crearlo (con color blanco).
+    static Material GetMat(string path, Color color, Texture forcedTex = null, Texture initialTex = null)
     {
-        string path = Dir + name + ".mat";
         var m = AssetDatabase.LoadAssetAtPath<Material>(path);
         if (!m)
         {
             var sh = Shader.Find("PSX/Lit");
-            if (!sh) { Debug.LogWarning("Montar pistola: no encuentro el shader PSX/Lit, uso el material del FBX."); return null; }
+            if (!sh) { Debug.LogWarning("Montar arma: no encuentro el shader PSX/Lit, uso el material del FBX."); return null; }
             var folder = System.IO.Path.GetDirectoryName(path).Replace('\\', '/');
             if (!AssetDatabase.IsValidFolder(folder))
                 AssetDatabase.CreateFolder(System.IO.Path.GetDirectoryName(folder).Replace('\\', '/'), System.IO.Path.GetFileName(folder));
             m = new Material(sh);
+            if (initialTex && m.HasProperty("_BaseMap")) { m.SetTexture("_BaseMap", initialTex); color = Color.white; }
             if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", color);
             AssetDatabase.CreateAsset(m, path);
         }

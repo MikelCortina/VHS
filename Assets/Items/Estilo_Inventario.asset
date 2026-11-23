@@ -1,0 +1,64 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0f37509de45303d47acf7354ae11f933, type: 3}
+  m_Name: Estilo_Inventario
+  m_EditorClassIdentifier: Assembly-CSharp::InventoryStyle
+  trayModel: {fileID: 0}
+  trayMaterial: {fileID: 0}
+  trayRim: 0.0455
+  flipTray: 0
+  trayGap: 0.12
+  cameraTilt: 18
+  cameraFov: 30
+  framing: 1.15
+  viewOffset: {x: 0, y: -0.05}
+  renderScale: 1
+  cameraLerp: 8
+  lightColor: {r: 1, g: 0.96, b: 0.9, a: 1}
+  lightIntensity: 1.2
+  lightRotation: {x: 55, y: -30, z: 0}
+  itemFill: 0.88
+  itemMaxHeight: 0.6
+  dragLift: 0.6
+  noModelColor: {r: 0.5, g: 0.5, b: 0.55, a: 1}
+  cellValid: {r: 0.25, g: 0.75, b: 0.3, a: 0.9}
+  cellInvalid: {r: 0.8, g: 0.2, b: 0.2, a: 0.9}
+  cellHighlightSize: 0.9
+  screenDim: {r: 0, g: 0, b: 0, a: 0.6}
+  screenSprite: {fileID: 0}
+  referenceResolution: {x: 1920, y: 1080}
+  font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
+  textColor: {r: 1, g: 1, b: 1, a: 1}
+  titleColor: {r: 1, g: 1, b: 1, a: 1}
+  titleSize: 20
+  countColor: {r: 1, g: 1, b: 1, a: 1}
+  countOutline: 1
+  countOutlineColor: {r: 0, g: 0, b: 0, a: 1}
+  countSize: 18
+  helpSize: 16
+  warningBackground: {r: 0.85, g: 0.3, b: 0.35, a: 1}
+  warningSprite: {fileID: 0}
+  warningTextColor: {r: 0, g: 0, b: 0, a: 1}
+  warningSize: 18
+  warningHeight: 34
+  warningWidth: 460
+  promptColor: {r: 1, g: 1, b: 1, a: 1}
+  promptSize: 22
+  promptOutline: 1
+  promptOffset: {x: 0, y: -40}
+  mainTitle: INVENTARIO
+  overflowTitle: DESBORDAMIENTO
+  warningText: 'AVISO: HAY OBJETOS EN EL DESBORDAMIENTO'
+  helpOverflow: PULSA [{0}] PARA CERRAR Y TIRAR LOS OBJETOS DEL DESBORDAMIENTO
+  helpNormal: 'Arrastrar: mover/apilar   [{0}]: girar   Shift+clic: dividir   Soltar
+    fuera: tirar   [{1}]: cerrar'
+  promptFormat: '[{0}]  {1}'

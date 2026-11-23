@@ -10,23 +10,30 @@ using UnityEngine.Rendering.Universal;
 /// Monta una escena de prueba con la parte jugable del kit PSX:
 /// jugador (FPSController + Health), cámara, arma (HitscanWeapon),
 /// enemigos (solo cuerpo + Health, sin lógica) y un nivel sencillo con texturas de 64x64.
-/// Menú: PSX > Crear escena de prueba. Se puede volver a ejecutar cuando quieras.
+/// Menú: PSX > Generador (avanzado) > Generar escena PSX nueva.
+/// PROTEGIDO: nunca sobrescribe nada. La escena se guarda siempre con un nombre nuevo
+/// (PSX_Generada.unity, PSX_Generada 1.unity...) y las texturas, materiales y el prefab
+/// Enemigo solo se crean si no existen; si ya existen se reutilizan sin tocarlos.
 /// </summary>
 public static class PSXSceneBuilder
 {
-    const string ScenePath = "Assets/Scenes/PSX_Test.unity";
+    const string ScenePath = "Assets/Scenes/PSX_Generada.unity";
     const string TexDir = "Assets/Textures";
     const string MatDir = "Assets/Materials";
     const string PrefabDir = "Assets/Prefabs";
 
     static readonly Color FogColor = new Color(0.12f, 0.10f, 0.14f);
 
-    [MenuItem("PSX/Crear escena de prueba")]
+    // Submenú aparte y prioridad alta para que quede lejos de los menús de uso diario.
+    [MenuItem("PSX/Generador (avanzado)/Generar escena PSX nueva (no sobrescribe nada)", false, 1000)]
     static void BuildFromMenu()
     {
         if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
-        if (File.Exists(ScenePath) &&
-            !EditorUtility.DisplayDialog("PSX", "Ya existe PSX_Test.unity. ¿Reemplazarla?", "Sí", "No"))
+        string path = AssetDatabase.GenerateUniqueAssetPath(ScenePath);
+        if (!EditorUtility.DisplayDialog("PSX",
+                "Se creará una escena NUEVA en:\n" + path +
+                "\n\nNo se modifica ninguna escena, textura, material ni prefab existente.",
+                "Crear", "Cancelar"))
             return;
         Build();
     }
@@ -91,7 +98,9 @@ public static class PSXSceneBuilder
         var enemyGO = Prim(PrimitiveType.Capsule, "Enemigo", Vector3.zero, Vector3.one, mEnemy, null, true);
         Prim(PrimitiveType.Cube, "Ojos", new Vector3(0, 0.55f, 0.42f), new Vector3(0.6f, 0.12f, 0.2f), mEyes, enemyGO.transform, false);
         enemyGO.AddComponent<Health>().maxHealth = 50f;
-        var enemyPrefab = PrefabUtility.SaveAsPrefabAsset(enemyGO, PrefabDir + "/Enemigo.prefab");
+        var enemyPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabDir + "/Enemigo.prefab");
+        if (enemyPrefab == null)
+            enemyPrefab = PrefabUtility.SaveAsPrefabAsset(enemyGO, PrefabDir + "/Enemigo.prefab");
         Object.DestroyImmediate(enemyGO);
 
         // Luz ambiente + niebla (la niebla esconde el poco alcance de dibujado)
@@ -104,8 +113,8 @@ public static class PSXSceneBuilder
         RenderSettings.fog = true;
         RenderSettings.fogMode = FogMode.Linear;
         RenderSettings.fogColor = FogColor;
-        RenderSettings.fogStartDistance = 6f;
-        RenderSettings.fogEndDistance = 32f;
+        RenderSettings.fogStartDistance = 10f;
+        RenderSettings.fogEndDistance = 55f;
 
         var sun = new GameObject("Luz direccional").AddComponent<Light>();
         sun.type = LightType.Directional;
@@ -155,7 +164,7 @@ public static class PSXSceneBuilder
         camGO.transform.localPosition = new Vector3(0, 1.6f, 0);
         var cam = camGO.AddComponent<Camera>();
         cam.nearClipPlane = 0.05f;
-        cam.farClipPlane = 40f;
+        cam.farClipPlane = 60f;
         cam.fieldOfView = 70f;
         cam.clearFlags = CameraClearFlags.SolidColor;
         cam.backgroundColor = FogColor;
@@ -186,15 +195,14 @@ public static class PSXSceneBuilder
             e.transform.rotation = Quaternion.LookRotation(player.transform.position - p);
         }
 
-        EditorSceneManager.SaveScene(scene, ScenePath);
-
-        var scenes = new List<EditorBuildSettingsScene>(EditorBuildSettings.scenes);
-        scenes.RemoveAll(s => s.path == ScenePath);
-        scenes.Insert(0, new EditorBuildSettingsScene(ScenePath, true));
-        EditorBuildSettings.scenes = scenes.ToArray();
+        // Nombre único: si ya existe PSX_Generada.unity se crea "PSX_Generada 1.unity", etc.
+        string scenePath = AssetDatabase.GenerateUniqueAssetPath(ScenePath);
+        if (File.Exists(scenePath)) { Debug.LogError("PSXSceneBuilder: " + scenePath + " ya existe; no se guarda."); return; }
+        EditorSceneManager.SaveScene(scene, scenePath);
+        // (Ya no toca Build Settings, para no cambiar la escena inicial del juego.)
 
         AssetDatabase.SaveAssets();
-        Debug.Log("PSXSceneBuilder: escena creada en " + ScenePath);
+        Debug.Log("PSXSceneBuilder: escena nueva creada en " + scenePath);
     }
 
     // ------------------------------------------------------------------
@@ -209,6 +217,8 @@ public static class PSXSceneBuilder
     static Texture2D MakeTexture(string name, int seed, System.Func<int, int, System.Random, Color> pixel)
     {
         string path = $"{TexDir}/{name}.png";
+        var existing = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        if (existing != null) return existing;               // no sobrescribir texturas existentes
         var rng = new System.Random(seed);
         var tex = new Texture2D(64, 64, TextureFormat.RGBA32, false);
         for (int y = 0; y < 64; y++)
@@ -233,11 +243,9 @@ public static class PSXSceneBuilder
     {
         string path = $"{MatDir}/{name}.mat";
         var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
-        if (mat == null)
-        {
-            mat = new Material(Shader.Find("PSX/Lit"));
-            AssetDatabase.CreateAsset(mat, path);
-        }
+        if (mat != null) return mat;                         // no tocar materiales existentes
+        mat = new Material(Shader.Find("PSX/Lit"));
+        AssetDatabase.CreateAsset(mat, path);
         mat.SetTexture("_BaseMap", tex);
         mat.SetTextureScale("_BaseMap", tiling);
         mat.SetColor("_BaseColor", color ?? Color.white);

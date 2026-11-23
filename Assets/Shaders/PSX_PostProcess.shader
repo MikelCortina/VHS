@@ -43,6 +43,8 @@ Shader "PSX/PostProcess"
             float4 _Resolution;
             float  _ColorLevels;
             float  _DitherStrength;
+            // Global: 1 mientras renderiza la cámara del inventario 3D (no se le aplica el efecto)
+            float  _PSXPostBypass;
 
             // Matriz de Bayer 4x4 (valores 0..15)
             static const float kBayer4x4[16] =
@@ -56,6 +58,8 @@ Shader "PSX/PostProcess"
             half4 frag (Varyings input) : SV_Target
             {
                 float2 uv  = input.texcoord;
+                if (_PSXPostBypass > 0.5)
+                    return half4(SAMPLE_TEXTURE2D(_BlitTexture, sampler_PointClamp, uv).rgb, 1);
                 float2 res = _Resolution.xy;
 
                 // ---- 1. Pixelado ----------------------------------------

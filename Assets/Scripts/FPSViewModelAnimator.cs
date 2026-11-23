@@ -69,11 +69,25 @@ public class FPSViewModelAnimator : MonoBehaviour
 
     Animator Arms => armsAnimator ? armsAnimator : (animators != null && animators.Length > 0 ? animators[0] : null);
     bool Has(string state) => Arms && Arms.HasState(0, Animator.StringToHash(state));
+    /// <summary>true si estos brazos tienen la animación de puños (se usan cuando no llevas ningún arma).</summary>
+    public bool HasFists => Has(fistsState);
+
+    bool initialized;
 
     void Start()
     {
+        if (initialized) return;   // WeaponSwitcher ya lo puso a sacar el arma antes de este Start
+        initialized = true;
         if (startEquipped) { State = EquipState.Equipped; SetWeaponVisible(true); }
         else GoUnarmed(0f);
+    }
+
+    /// <summary>Sin arma: puños si estos brazos los tienen. Lo usa WeaponSwitcher al volver a activar estos brazos
+    /// (el Animator vuelve a su estado por defecto al reactivarse).</summary>
+    public void ShowUnarmed()
+    {
+        initialized = true;
+        GoUnarmed(0f);
     }
 
     // ───────── Sacar / guardar ─────────
@@ -100,6 +114,7 @@ public class FPSViewModelAnimator : MonoBehaviour
 
     public void Draw()
     {
+        if (!initialized) { initialized = true; State = EquipState.Unarmed; }   // activado justo ahora por WeaponSwitcher
         if (State != EquipState.Unarmed) return;
         SetWeaponVisible(true);
         if (!Has(drawState)) { State = EquipState.Equipped; Play(idleState, 0f, idleSpeed); return; }
@@ -108,8 +123,9 @@ public class FPSViewModelAnimator : MonoBehaviour
         foreach (var a in animators)
         {
             if (!a) continue;
-            // los brazos funden desde los puños; el arma (aún fuera de pantalla) empieza directamente
-            if (a == Arms) a.CrossFadeInFixedTime(drawState, fistsBlendTime * 0.6f, 0);
+            // los brazos funden desde los puños; el arma (aún fuera de pantalla) empieza directamente.
+            // Sin puños (brazos recién activados) no hay nada de lo que fundir: empieza directamente también.
+            if (a == Arms && Has(fistsState)) a.CrossFadeInFixedTime(drawState, fistsBlendTime * 0.6f, 0);
             else a.Play(drawState, 0, 0f);
             a.speed = drawSpeed;
         }
